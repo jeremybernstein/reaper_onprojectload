@@ -30,25 +30,35 @@
 #include "reaper_plugin_functions.h"
 #include <cstdio>
 
-#define VERSION_STRING "1.0-beta.1"
+#define VERSION_STRING "1.0-beta.2"
 
 static int infoCommandId = 0;
 static int setCommandId = 0;
 static int showCommandId = 0;
 static int clearCommandId = 0;
+static int frontmostToggleCommandId = 0;
 
 static int actionToRun = 0;
+static bool runOnFrontmostChange = false;
+
+static ReaProject *frontmostProject = nullptr;
 
 static bool loadAPI(void *(*getFunc)(const char *));
 static void registerCustomAction();
 static bool showInfo(KbdSectionInfo *sec, int command, int val, int val2, int relmode, HWND hwnd);
 
+static void handleActionId(const char *actionId, bool setExt);
+static void handleFrontmostTimer();
+
 static void processExtState();
 static void runAction();
+static void activeProjectCheck();
+static int frontmostToggleCallback(int command_id);
 
 static bool setAction(KbdSectionInfo *sec, int command, int val, int val2, int relmode, HWND hwnd);
 static bool showAction(KbdSectionInfo *sec, int command, int val, int val2, int relmode, HWND hwnd);
 static bool clearAction(KbdSectionInfo *sec, int command, int val, int val2, int relmode, HWND hwnd);
+static bool frontmostToggleAction(KbdSectionInfo *sec, int command, int val, int val2, int relmode, HWND hwnd);
 
 static void BeginLoadProjectStateFn(bool isUndo, struct project_config_extension_t *reg);
 //static bool ProcessExtensionLineFn(const char *line, ProjectStateContext *ctx, bool isUndo, struct project_config_extension_t *reg); // returns BOOL if line (and optionally subsequent lines) processed (return false if not plug-ins line)
@@ -76,16 +86,38 @@ int REAPER_PLUGIN_ENTRYPOINT(REAPER_PLUGIN_HINSTANCE instance, reaper_plugin_inf
   if (actionId && *actionId) {
     plugin_register("timer", (void *)processExtState);
   }
+
+  const char *wantsFrontmost = GetExtState("sockmonkey72", "onprojectload_frontmost");
+  runOnFrontmostChange = (!strcmp(wantsFrontmost, "1")) ? true : false;
+  handleFrontmostTimer();
+
   return 1;
+}
+
+void handleActionId(const char *actionId, bool setExt)
+{
+  actionToRun = NamedCommandLookup(actionId); // this doesn't work at extension load time
+  if (actionToRun > 0) {
+    if (setExt) {
+      SetExtState("sockmonkey72", "onprojectload", actionId, true);
+    }
+  }
+  else {
+    actionToRun = 0;
+  }
+}
+
+int frontmostToggleCallback(int command_id)
+{
+  if (command_id != frontmostToggleCommandId) return -1;
+
+  return (runOnFrontmostChange) ? 1 : 0;
 }
 
 void processExtState()
 {
   const char *actionId = GetExtState("sockmonkey72", "onprojectload");
-  actionToRun = NamedCommandLookup(actionId); // this doesn't work at extension load time
-  if (actionToRun <= 0) {
-    actionToRun = 0;
-  }
+  handleActionId(actionId, false);
   plugin_register("-timer", (void *)processExtState);
 }
 
@@ -104,15 +136,20 @@ bool setAction(KbdSectionInfo *sec, int command, int val, int val2, int relmode,
 {
   if (command != setCommandId) return false;
 
+  if (actionToRun > 0) {
+    const char *actionName = kbd_getTextFromCmd(actionToRun, nullptr);
+    if (actionName) {
+      char message[512];
+      snprintf(message, 512, "Overwrite action: %s ?" , actionName);
+      if (ShowMessageBox(message, "onProjectLoad", 4) != 6) {
+        return true;
+      }
+    }
+  }
+
   char retString[512];
-  if (GetUserInputs("onProjectLoad", 1, "Enter Action Identifier String (not Cmd ID)", retString, 512)) {
-    actionToRun = NamedCommandLookup(retString);
-    if (actionToRun > 0) {
-      SetExtState("sockmonkey72", "onprojectload", retString, true);
-    }
-    else {
-      actionToRun = 0;
-    }
+  if (GetUserInputs("onProjectLoad", 1, "Enter Action Identifier String", retString, 512)) {
+    handleActionId(retString, true);
   }
   return true;
 }
@@ -122,7 +159,7 @@ bool showAction(KbdSectionInfo *sec, int command, int val, int val2, int relmode
   if (command != showCommandId) return false;
 
   if (actionToRun > 0) {
-    const char *actionName = kbd_getTextFromCmd(actionToRun, NULL);
+    const char *actionName = kbd_getTextFromCmd(actionToRun, nullptr);
     if (actionName) {
       char message[512];
       snprintf(message, 512, "Action name: %s\n"
@@ -139,16 +176,46 @@ bool clearAction(KbdSectionInfo *sec, int command, int val, int val2, int relmod
   if (command != clearCommandId) return false;
 
   if (actionToRun > 0) {
-    const char *actionName = kbd_getTextFromCmd(actionToRun, NULL);
+    const char *actionName = kbd_getTextFromCmd(actionToRun, nullptr);
     if (actionName) {
       char message[512];
-      snprintf(message, 512, "Clear Action: %s (%s)?", actionName, ReverseNamedCommandLookup(actionToRun));
+      snprintf(message, 512, "Clear Action: %s ?", actionName);
       if (ShowMessageBox(message, "onProjectLoad", 4) == 6) {
         actionToRun = 0;
-        SetExtState("sockmonkey72", "onprojectload", NULL, true);
+        SetExtState("sockmonkey72", "onprojectload", nullptr, true);
       }
     }
   }
+  return true;
+}
+
+void activeProjectCheck()
+{
+  ReaProject *rp = EnumProjects(-1, nullptr, 0);
+  if (rp != frontmostProject) {
+    runAction();
+    frontmostProject = rp;
+  }
+}
+
+void handleFrontmostTimer()
+{
+  if (runOnFrontmostChange) {
+    plugin_register("timer", (void *)activeProjectCheck);
+  }
+  else {
+    plugin_register("-timer", (void *)activeProjectCheck);
+  }
+}
+
+bool frontmostToggleAction(KbdSectionInfo *sec, int command, int val, int val2, int relmode, HWND hwnd)
+{
+  if (command != frontmostToggleCommandId) return false;
+
+  runOnFrontmostChange = !runOnFrontmostChange;
+  handleFrontmostTimer();
+  SetExtState("sockmonkey72", "onprojectload_frontmost", runOnFrontmostChange ? "1" : "0", true);
+
   return true;
 }
 
@@ -164,6 +231,7 @@ void BeginLoadProjectStateFn(bool isUndo, struct project_config_extension_t *reg
 {
   // ShowConsoleMsg("beginprojectload\n");
   plugin_register("timer", (void *)runAction);
+  frontmostProject = EnumProjects(-1, nullptr, 0);
 }
 
 //const char *actionTag = "SM72_OPLACTION ";
@@ -196,7 +264,7 @@ void registerCustomAction()
   custom_action_register_t infoCustAction {
     0,
     "SM72_OPLINFO",
-    "reaper_onprojectload: Run an action on any project load",
+    "reaper_onprojectload: Info (Run an action on any project load)",
     nullptr
   };
 
@@ -232,6 +300,17 @@ void registerCustomAction()
 
   clearCommandId = plugin_register("custom_action", &clearCustAction);
   plugin_register("hookcommand2", (void *)&clearAction);
+
+  custom_action_register_t frontmostToggleCustAction {
+    0,
+    "SM72_OPLFRONTMOSTTOGGLE",
+    "reaper_onprojectload: Run action on change to frontmost project",
+    nullptr
+  };
+
+  frontmostToggleCommandId = plugin_register("custom_action", &frontmostToggleCustAction);
+  plugin_register("hookcommand2", (void *)&frontmostToggleAction);
+  plugin_register("toggleaction", (void *)&frontmostToggleCallback);
 }
 
 #define REQUIRED_API(name) {(void **)&name, #name, true}
@@ -259,6 +338,7 @@ static bool loadAPI(void *(*getFunc)(const char *))
     REQUIRED_API(Main_OnCommand),
     REQUIRED_API(GetExtState),
     REQUIRED_API(SetExtState),
+    REQUIRED_API(EnumProjects),
     REQUIRED_API(ShowMessageBox),
   };
 
