@@ -30,7 +30,7 @@
 #include "reaper_plugin_functions.h"
 #include <cstdio>
 
-#define VERSION_STRING "1.0-beta.2"
+#define VERSION_STRING "1.0.0"
 
 #define SECTION_ID "sockmonkey72"
 #define KEY_ID "onprojectload"
@@ -269,7 +269,7 @@ void registerCustomAction()
   custom_action_register_t infoCustAction {
     0,
     "SM72_OPLINFO",
-    "reaper_onprojectload: Info (Run an action on any project load)",
+    "sockmonkey72_onprojectload: Info (Run an action on any project load)",
     nullptr
   };
 
@@ -279,7 +279,7 @@ void registerCustomAction()
   custom_action_register_t setCustAction {
     0,
     "SM72_OPLSETACTION",
-    "reaper_onprojectload: Set action to run on project load",
+    "sockmonkey72_onprojectload: Set action to run on project load",
     nullptr
   };
 
@@ -289,7 +289,7 @@ void registerCustomAction()
   custom_action_register_t showCustAction {
     0,
     "SM72_OPLSHOWACTION",
-    "reaper_onprojectload: Display action being run on project load",
+    "sockmonkey72_onprojectload: Display action being run on project load",
     nullptr
   };
 
@@ -299,7 +299,7 @@ void registerCustomAction()
   custom_action_register_t clearCustAction {
     0,
     "SM72_OPLCLEARACTION",
-    "reaper_onprojectload: Clear action on project load",
+    "sockmonkey72_onprojectload: Clear action on project load",
     nullptr
   };
 
@@ -309,7 +309,7 @@ void registerCustomAction()
   custom_action_register_t frontmostToggleCustAction {
     0,
     "SM72_OPLFRONTMOSTTOGGLE",
-    "reaper_onprojectload: Run action on change to frontmost project",
+    "sockmonkey72_onprojectload: Run action on change to frontmost project",
     nullptr
   };
 
