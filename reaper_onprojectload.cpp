@@ -32,6 +32,10 @@
 
 #define VERSION_STRING "1.0-beta.2"
 
+#define SECTION_ID "sockmonkey72"
+#define KEY_ID "onprojectload"
+#define KEY_FM_ID "onprojectload_frontmost"
+
 static int infoCommandId = 0;
 static int setCommandId = 0;
 static int showCommandId = 0;
@@ -47,7 +51,7 @@ static bool loadAPI(void *(*getFunc)(const char *));
 static void registerCustomAction();
 static bool showInfo(KbdSectionInfo *sec, int command, int val, int val2, int relmode, HWND hwnd);
 
-static void handleActionId(const char *actionId, bool setExt);
+static void handleActionId(const char *actionId);
 static void handleFrontmostTimer();
 
 static void processExtState();
@@ -82,27 +86,22 @@ int REAPER_PLUGIN_ENTRYPOINT(REAPER_PLUGIN_HINSTANCE instance, reaper_plugin_inf
   plugin_register("projectconfig", &config);
   registerCustomAction();
 
-  const char *actionId = GetExtState("sockmonkey72", "onprojectload");
+  const char *actionId = GetExtState(SECTION_ID, KEY_ID);
   if (actionId && *actionId) {
     plugin_register("timer", (void *)processExtState);
   }
 
-  const char *wantsFrontmost = GetExtState("sockmonkey72", "onprojectload_frontmost");
+  const char *wantsFrontmost = GetExtState(SECTION_ID, KEY_FM_ID);
   runOnFrontmostChange = (!strcmp(wantsFrontmost, "1")) ? true : false;
   handleFrontmostTimer();
 
   return 1;
 }
 
-void handleActionId(const char *actionId, bool setExt)
+void handleActionId(const char *actionId)
 {
   actionToRun = NamedCommandLookup(actionId); // this doesn't work at extension load time
-  if (actionToRun > 0) {
-    if (setExt) {
-      SetExtState("sockmonkey72", "onprojectload", actionId, true);
-    }
-  }
-  else {
+  if (actionToRun <= 0) {
     actionToRun = 0;
   }
 }
@@ -116,8 +115,8 @@ int frontmostToggleCallback(int command_id)
 
 void processExtState()
 {
-  const char *actionId = GetExtState("sockmonkey72", "onprojectload");
-  handleActionId(actionId, false);
+  const char *actionId = GetExtState(SECTION_ID, KEY_ID);
+  handleActionId(actionId);
   plugin_register("-timer", (void *)processExtState);
 }
 
@@ -149,7 +148,13 @@ bool setAction(KbdSectionInfo *sec, int command, int val, int val2, int relmode,
 
   char retString[512];
   if (GetUserInputs("onProjectLoad", 1, "Enter Action Identifier String", retString, 512)) {
-    handleActionId(retString, true);
+    handleActionId(retString);
+    if (actionToRun) {
+      SetExtState(SECTION_ID, KEY_ID, retString, true);
+    }
+    else {
+      ShowMessageBox("Bad Action Identifier String", "onProjectLoad", 0);
+    }
   }
   return true;
 }
@@ -182,7 +187,7 @@ bool clearAction(KbdSectionInfo *sec, int command, int val, int val2, int relmod
       snprintf(message, 512, "Clear Action: %s ?", actionName);
       if (ShowMessageBox(message, "onProjectLoad", 4) == 6) {
         actionToRun = 0;
-        SetExtState("sockmonkey72", "onprojectload", nullptr, true);
+        SetExtState(SECTION_ID, KEY_ID, nullptr, true);
       }
     }
   }
@@ -214,7 +219,7 @@ bool frontmostToggleAction(KbdSectionInfo *sec, int command, int val, int val2, 
 
   runOnFrontmostChange = !runOnFrontmostChange;
   handleFrontmostTimer();
-  SetExtState("sockmonkey72", "onprojectload_frontmost", runOnFrontmostChange ? "1" : "0", true);
+  SetExtState(SECTION_ID, KEY_FM_ID, runOnFrontmostChange ? "1" : "0", true);
 
   return true;
 }
