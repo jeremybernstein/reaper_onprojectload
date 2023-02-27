@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.15)
 
 project(reaper_onprojectload
   VERSION
-    1.0.0
+    1.0.1
   DESCRIPTION
     "Execute action on project load for REAPER"
   LANGUAGES

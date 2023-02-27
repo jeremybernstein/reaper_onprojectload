@@ -30,7 +30,7 @@
 #include "reaper_plugin_functions.h"
 #include <cstdio>
 
-#define VERSION_STRING "1.0.0"
+#define VERSION_STRING "1.0.1"
 
 #define SECTION_ID "sockmonkey72"
 #define KEY_ID "onprojectload"
@@ -44,6 +44,7 @@ static int frontmostToggleCommandId = 0;
 
 static int actionToRun = 0;
 static bool runOnFrontmostChange = false;
+static bool promptShown = false;
 
 static ReaProject *frontmostProject = nullptr;
 
@@ -131,6 +132,29 @@ bool showInfo(KbdSectionInfo *sec, int command, int val, int val2, int relmode, 
   return true;
 }
 
+void pollSetAction()
+{
+  int result = PromptForAction(promptShown == false ? 1 : 0, 0, 0);
+  if (result == 0) {
+    promptShown = true;
+  }
+  else {
+    PromptForAction(-1, 0, 0);
+    if (result > 0) {
+      char actionId[512];
+      actionToRun = result;
+      snprintf(actionId, 512, "_%s", ReverseNamedCommandLookup(actionToRun));
+      SetExtState(SECTION_ID, KEY_ID, actionId, true);
+      char msg[512];
+      snprintf(msg, 512, "Action %d (%s) will run at project load.", actionToRun, kbd_getTextFromCmd(actionToRun, nullptr));
+      ShowMessageBox(msg, "onProjectLoad", 0);
+    }
+    plugin_register("-timer", (void *)pollSetAction);
+    promptShown = false;
+  }
+}
+
+// reimplement with PromptForAction(int session_mode, int init_id, int section_id)?
 bool setAction(KbdSectionInfo *sec, int command, int val, int val2, int relmode, HWND hwnd)
 {
   if (command != setCommandId) return false;
@@ -146,16 +170,8 @@ bool setAction(KbdSectionInfo *sec, int command, int val, int val2, int relmode,
     }
   }
 
-  char retString[512];
-  if (GetUserInputs("onProjectLoad", 1, "Enter Action Identifier String", retString, 512)) {
-    handleActionId(retString);
-    if (actionToRun) {
-      SetExtState(SECTION_ID, KEY_ID, retString, true);
-    }
-    else {
-      ShowMessageBox("Bad Action Identifier String", "onProjectLoad", 0);
-    }
-  }
+  promptShown = false;
+  plugin_register("timer", (void *)pollSetAction);
   return true;
 }
 
@@ -227,7 +243,9 @@ bool frontmostToggleAction(KbdSectionInfo *sec, int command, int val, int val2, 
 void runAction()
 {
   if (actionToRun > 0) {
+    Undo_BeginBlock2(0);
     Main_OnCommand(actionToRun, 0);
+    Undo_EndBlock2(0, "onProjectLoad: Execute Action", -1);
   }
   plugin_register("-timer", (void *)runAction); // just run it once
 }
@@ -345,6 +363,9 @@ static bool loadAPI(void *(*getFunc)(const char *))
     REQUIRED_API(SetExtState),
     REQUIRED_API(EnumProjects),
     REQUIRED_API(ShowMessageBox),
+    REQUIRED_API(Undo_BeginBlock2),
+    REQUIRED_API(Undo_EndBlock2),
+    REQUIRED_API(PromptForAction),
   };
 
   for (const ApiFunc &func : funcs) {
