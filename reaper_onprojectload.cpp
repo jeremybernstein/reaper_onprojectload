@@ -126,7 +126,7 @@ bool showInfo(KbdSectionInfo *sec, int command, int val, int val2, int relmode, 
   if (command != infoCommandId) return false;
 
   char infoString[512];
-  snprintf(infoString, 512, "onprojectload // sockmonkey72\nRun an action on any project load\n\nVersion %s\n\n\nCopyright (c) 2022 Jeremy Bernstein\njeremy.d.bernstein@googlemail.com%s",
+  snprintf(infoString, 512, "onprojectload // sockmonkey72\nRun an action on any project load\n\nVersion %s\n\n\nCopyright (c) 2022 Jeremy Bernstein\njeremy.d.bernstein@googlemail.com\n\n%s",
            VERSION_STRING, __DATE__);
   ShowConsoleMsg(infoString);
   return true;
